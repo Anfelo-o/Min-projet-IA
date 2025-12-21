@@ -27,12 +27,8 @@ from pyclustering.cluster.kmedoids import kmedoids
 from sklearn.neighbors import NearestNeighbors
 from scipy.spatial.distance import cdist
 import warnings
+from kneed import KneeLocator
 warnings.filterwarnings('ignore')
-
-# ============================================================================
-# 1. CHARGEMENT ET PRÉTRAITEMENT DES DONNÉES
-# ============================================================================
-
 print("=" * 60)
 print("CHARGEMENT ET PRÉTRAITEMENT DES DONNÉES")
 print("=" * 60)
@@ -61,7 +57,6 @@ z = basededonnee.isnull().sum()
 print(f"\nValeurs manquantes par colonne :")
 print(z)
 
-# Gestion des valeurs manquantes
 num_features = basededonnee.select_dtypes(include=['int64', 'float64']).columns
 cat_features = basededonnee.select_dtypes(include=['object']).columns
 
@@ -71,45 +66,32 @@ for i in num_features:
 for i in cat_features:
     basededonnee[i] = basededonnee[i].fillna('None')
 
-# Encodage des variables catégorielles
 scale = LabelEncoder()
 for i in cat_features:
     basededonnee[i] = scale.fit_transform(basededonnee[i])
 
-# Séparation features ettarget
 A = basededonnee.drop(0, axis=1)
 B = basededonnee[0]
 
-# Standardisation
 scaler = StandardScaler()
 datas1 = scaler.fit_transform(A)
 print(f"\nDonnées standardisées shape : {datas1.shape}")
 
-# PCA decomposition
 n_components_pca = min(16, A.shape[1])
 pca = PCA(n_components=n_components_pca)
 pca.fit(datas1)
 datass = pca.transform(datas1)
 print(f"Données après PCA shape : {datass.shape}")
 
-
-#CLUSTERING 
-
-
 print("\n" + "=" * 60)
 print("ANALYSE DE CLUSTERING")
 print("=" * 60)
-
-# Fonction pour déterminer eps optimal pour DBSCAN
 def find_optimal_eps(data, min_samples=5):
-    """Trouve la valeur optimale de eps pour DBSCAN"""
+
     neighbors = NearestNeighbors(n_neighbors=min_samples)
     neighbors_fit = neighbors.fit(data)
     distances, indices = neighbors_fit.kneighbors(data)
     distances = np.sort(distances[:, min_samples-1], axis=0)
-    
-    # Trouver le point de coude
-    from kneed import KneeLocator
     kneedle = KneeLocator(range(len(distances)), distances, S=1.0, curve='convex', direction='increasing')
     optimal_eps = distances[kneedle.elbow] if kneedle.elbow else distances[-1] * 0.5
     
@@ -132,13 +114,7 @@ clustering_results = {
     'KMedoids': {'silhouette': [], 'rand': [], 'n_clusters': [], 'labels': None}
 }
 
-
-# K-MEANS 
-
-
-print("\n--- K-Means Clustering (Corrigé) ---")
-
-# Tester différents nombres de clusters
+print("\n K-Means Clustering ")
 r = range(2, min(11, len(A)//2))  
 silhouette_coefficients = []
 rand_scores = []
@@ -168,7 +144,6 @@ for n_clusters in r:
             best_kmeans_labels = labels
             best_kmeans_centroids = kmeans.cluster_centers_
         
-        # Visualisation 
         if n_clusters == best_kmeans_k:
             centroids_pca = pca.transform(kmeans.cluster_centers_)
             plt.figure(figsize=(10, 6))
@@ -182,8 +157,6 @@ for n_clusters in r:
             plt.show()
 
 clustering_results['KMeans']['labels'] = best_kmeans_labels
-
-# Statistiques K-Means
 if silhouette_coefficients:
     maxs = max(silhouette_coefficients)
     mins = min(silhouette_coefficients)
@@ -199,17 +172,9 @@ if silhouette_coefficients:
     print(f"Silhouette scores: Moyenne={moyennes:.3f}, Std={stds:.3f}, Min={mins:.3f}, Max={maxs:.3f}")
     print(f"RAND scores: Moyenne={moyenner:.3f}, Std={stdr:.3f}, Min={minr:.3f}, Max={maxr:.3f}")
 
-
-# DBSCAN OPTIMISÉ
-
-
-print("\n--- DBSCAN Clustering (Optimisé) ---")
-
-# Détermination automatique de eps
+print("DBSCAN Clustering")
 optimal_eps = find_optimal_eps(datas1, min_samples=5)
 print(f"eps optimal déterminé : {optimal_eps:.3f}")
-
-# Test de différents paramètres pour DBSCAN
 dbscan_params = [
     {'eps': optimal_eps, 'min_samples': 5},
     {'eps': optimal_eps * 0.8, 'min_samples': 5},
@@ -221,7 +186,6 @@ dbscan_params = [
 best_dbscan_score = -1
 best_dbscan_labels = None
 best_dbscan_params = None
-
 for params in dbscan_params:
     dbscan = DBSCAN(eps=params['eps'], min_samples=params['min_samples'])
     labels = dbscan.fit_predict(datas1)
@@ -279,7 +243,7 @@ if best_dbscan_labels is not None:
 # K-MEDOIDS
 
 
-print("\n--- K-Medoids Clustering ---")
+print(" K-Medoids Clustering ")
 
 r_medoids = range(2, 11)
 silhouette_medoids = []
@@ -377,23 +341,17 @@ if clustering_results['KMedoids']['labels'] is not None:
 comparison_df = pd.DataFrame(comparison_data)
 print("\nTableau de comparaison des méthodes de clustering :")
 print(comparison_df.to_string(index=False))
-
-# Visualisation comparative
 fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-
-# K-Means
 if clustering_results['KMeans']['labels'] is not None:
     axes[0].scatter(datass[:, 0], datass[:, 1], s=7, c=clustering_results['KMeans']['labels'], cmap='tab20')
     axes[0].set_title(f'K-Means ({best_kmeans_k} clusters)\nSilhouette: {best_kmeans_silhouette:.3f}')
     axes[0].grid(True, alpha=0.3)
 
-# DBSCAN
 if clustering_results['DBSCAN']['labels'] is not None:
     axes[1].scatter(datass[:, 0], datass[:, 1], s=7, c=clustering_results['DBSCAN']['labels'], cmap='tab20')
     axes[1].set_title(f'DBSCAN ({clustering_results["DBSCAN"]["n_clusters"]} clusters, {clustering_results["DBSCAN"]["noise"]} bruit)')
     axes[1].grid(True, alpha=0.3)
 
-# K-Medoids
 if clustering_results['KMedoids']['labels'] is not None:
     axes[2].scatter(datass[:, 0], datass[:, 1], s=7, c=clustering_results['KMedoids']['labels'], cmap='tab20')
     axes[2].set_title(f'K-Medoids ({best_k} clusters)\nSilhouette: {best_silhouette:.3f}')
@@ -407,7 +365,7 @@ print("\n" + "=" * 60)
 print("SAUVEGARDE DES RÉSULTATS")
 print("=" * 60)
 
-# Sauvegarde des résultats K-Means
+
 path_kmeans = r"Hepatitis_KMeans_1.csv"
 dami_kmeans = {
     'Silhouette score': [moyennes, stds, mins, maxs] if silhouette_coefficients else ['N/A', 'N/A', 'N/A', 'N/A'],
@@ -457,12 +415,10 @@ out_medoids = pd.DataFrame(dami_medoids, index=['Moyenne (mean)', 'Ecart type (s
 out_medoids.to_csv(path_medoids)
 print(f"Résultats K-Medoids sauvegardés dans {path_medoids}")
 
-# Sauvegarde de la comparaison
 path_comparison = r"Hepatitis_Clustering_Comparison.csv"
 comparison_df.to_csv(path_comparison)
 print(f"Comparaison des méthodes sauvegardée dans {path_comparison}")
 
-# CLASSIFICATION 
 
 print("\n" + "=" * 60)
 print("CLASSIFICATION ")
@@ -496,12 +452,11 @@ results = {
     'SVM': {'accuracy': [], 'precision': [], 'recall': [], 'f1': []}
 }
 
-print("\nÉvaluation des classifieurs (30 répétitions avec random_state différent)...")
+print("\nÉvaluation des classifieurs")
 
 for i in range(30):
-    cv = KFold(5, shuffle=True, random_state=i)  # CORRECTION : random_state=i au lieu de 42
-    
-    # KNN
+    cv = KFold(5, shuffle=True, random_state=i)  
+
     Score1 = cross_val_score(KNeighborsClassifier(), fs, Y, scoring='accuracy', cv=cv)
     Score2 = cross_val_score(KNeighborsClassifier(), fs, Y, scoring=make_scorer(precision_score, average='macro'), cv=cv)
     Score3 = cross_val_score(KNeighborsClassifier(), fs, Y, scoring=make_scorer(recall_score, average='weighted'), cv=cv)
@@ -511,8 +466,7 @@ for i in range(30):
     results['KNN']['precision'].append(Score2.mean())
     results['KNN']['recall'].append(Score3.mean())
     results['KNN']['f1'].append(Score4.mean())
-    
-    # Decision Tree
+
     Score5 = cross_val_score(DecisionTreeClassifier(random_state=i), fs, Y, scoring='accuracy', cv=cv)
     Score6 = cross_val_score(DecisionTreeClassifier(random_state=i), fs, Y, scoring=make_scorer(precision_score, average='macro'), cv=cv)
     Score7 = cross_val_score(DecisionTreeClassifier(random_state=i), fs, Y, scoring=make_scorer(recall_score, average='weighted'), cv=cv)
@@ -522,8 +476,7 @@ for i in range(30):
     results['DecisionTree']['precision'].append(Score6.mean())
     results['DecisionTree']['recall'].append(Score7.mean())
     results['DecisionTree']['f1'].append(Score8.mean())
-    
-    # Naive Bayes
+
     Score9 = cross_val_score(GaussianNB(), fs, Y, scoring='accuracy', cv=cv)
     Score10 = cross_val_score(GaussianNB(), fs, Y, scoring=make_scorer(precision_score, average='macro'), cv=cv)
     Score11 = cross_val_score(GaussianNB(), fs, Y, scoring=make_scorer(recall_score, average='weighted'), cv=cv)
@@ -533,8 +486,7 @@ for i in range(30):
     results['NaiveBayes']['precision'].append(Score10.mean())
     results['NaiveBayes']['recall'].append(Score11.mean())
     results['NaiveBayes']['f1'].append(Score12.mean())
-    
-    # SVM
+
     Score13 = cross_val_score(SVC(gamma='auto', random_state=i), fs, Y, scoring='accuracy', cv=cv)
     Score14 = cross_val_score(SVC(gamma='auto', random_state=i), fs, Y, scoring=make_scorer(precision_score, average='macro'), cv=cv)
     Score15 = cross_val_score(SVC(gamma='auto', random_state=i), fs, Y, scoring=make_scorer(recall_score, average='weighted'), cv=cv)
@@ -545,7 +497,6 @@ for i in range(30):
     results['SVM']['recall'].append(Score15.mean())
     results['SVM']['f1'].append(Score16.mean())
 
-# Calcul des statistiques
 classification_stats = []
 
 for model_name, metrics in results.items():
@@ -562,7 +513,6 @@ classification_df = pd.DataFrame(classification_stats)
 print("\nPerformance des classifieurs:")
 print(classification_df.to_string(index=False))
 
-# Visualisation des résultats
 fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 models = list(results.keys())
 colors = ['blue', 'green', 'orange', 'red']
@@ -579,10 +529,11 @@ for idx, (model, color) in enumerate(zip(models, colors)):
     axes[row, col].legend()
     axes[row, col].grid(True, alpha=0.3)
 
-plt.suptitle('Distribution des scores de précision (30 répétitions)', fontsize=16)
+plt.suptitle('Distribution des scores de précision ', fontsize=16)
 plt.tight_layout()
 plt.show()
 
 print("\n" + "=" * 60)
 print("ANALYSE TERMINÉE AVEC SUCCÈS")
 print("=" * 60)
+
